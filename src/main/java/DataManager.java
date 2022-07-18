@@ -1,5 +1,3 @@
-import weka.classifiers.bayes.NaiveBayes;
-import weka.classifiers.Evaluation;
 import weka.core.Attribute;
 import weka.core.Instance;
 import weka.core.Instances;
@@ -8,18 +6,23 @@ import weka.filters.Filter;
 import weka.filters.unsupervised.attribute.Add;
 import weka.filters.unsupervised.attribute.Remove;
 import weka.filters.unsupervised.attribute.ReplaceMissingWithUserConstant;
-import weka.filters.unsupervised.instance.RemoveWithValues;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.Random;
 
 public class DataManager {
-    private static Instance current;
 
+    /**
+     * Reads the specified data set in ARFF format
+     * @param filename      the path to the ARFF file to read
+     * @return Instances
+     * @throws IOException
+     */
     static public Instances readDataSet(String filename) throws IOException {
         BufferedReader bufferedReader = new BufferedReader(new FileReader(filename));
         Instances datasetInstances = new Instances(bufferedReader);
@@ -27,6 +30,11 @@ public class DataManager {
         return datasetInstances;
     }
 
+    /**
+     * Reads the data set for every element in the Party enum
+     * @return Instances    a unified dataset containing information for all parties
+     * @throws Exception
+     */
     static public Instances readAllDataSets() throws Exception {
         Instances result = null;
         for (Party p : Party.values()) {
@@ -38,6 +46,7 @@ public class DataManager {
                 System.out.println("Failed to read " + filename + ": " + e);
             }
 
+            // We need to add a new attribute to hold the party
             Add filter = new Add();
             filter.setAttributeIndex("first");
             filter.setAttributeName("party");
@@ -45,6 +54,7 @@ public class DataManager {
             filter.setInputFormat(partyInstances);
             partyInstances = Filter.useFilter(partyInstances, filter);
 
+            // Now set the appropriate value for this new attribute
             ReplaceMissingWithUserConstant filter2 = new ReplaceMissingWithUserConstant();
             filter2.setAttributes("party");
             filter2.setNominalStringReplacementValue(p.toString());
@@ -57,14 +67,32 @@ public class DataManager {
                 if (!result.equalHeaders(partyInstances)) {
                     throw new Exception("Header mismatch:" + result.equalHeadersMsg(partyInstances));
                 }
+                // merge the dataset for this party into our master dataset
                 result.addAll(partyInstances);
             }
         }
-        result.setRelationName("affiliation");
-        result.randomize(new Random());
+        if (result != null) {
+            // format the dataset and randomize its order before returning
+            result.setRelationName("affiliation");
+            // Ensure that all the weights are equivalent
+            if (!result.allAttributeWeightsIdentical()) {
+                Enumeration<Attribute> enumeration = result.enumerateAttributes();
+                while (enumeration.hasMoreElements()) {
+                    Attribute att = enumeration.nextElement();
+                    att.setWeight(1.0);
+                }
+            }
+            result.randomize(new Random());
+        }
         return result;
     }
 
+    /**
+     * Split out the data applicable to a single particular party and write it to desk.
+     * @param instances     a full dataset, containing data about all parties
+     * @param party         the party for which we want to update the datafile on disk
+     * @throws Exception
+     */
     static public void writeDataSet(Instances instances, Party party) throws Exception {
         Instances partyInstances = new Instances(instances);
 
@@ -88,5 +116,21 @@ public class DataManager {
         saver.setInstances(partyInstances);
         saver.setFile(new File("Data/" + party.toString().toLowerCase() + ".arff"));
         saver.writeBatch();
+    }
+
+    static public ArrayList<String> readQuestionsFromFile(String filepath) {
+        ArrayList<String> questions = new ArrayList<String>();
+        BufferedReader reader;
+        try {
+            reader = new BufferedReader(new FileReader(filepath));
+            String line = reader.readLine();
+            while (line != null ) {
+                questions.add(line);
+                line = reader.readLine();
+            }
+        } catch(IOException e) {
+            e.printStackTrace();
+        }
+        return questions;
     }
 }
